@@ -136,7 +136,7 @@ async def punish(message: discord.Message, reason: str, severe: bool = False):
         await log(
             message.guild,
             "Overwatch: SCAM LINK blocked",
-            f"**User:** {member} ({member.id})\n**Reason:** {reason}\n"
+            f"**User:** {member.mention} ({member}, {member.id})\n**Reason:** {reason}\n"
             f"**Action:** Message deleted + 24h timeout\n"
             f"**Channel:** {message.channel.mention}\n**Content:** {message.content[:300]}",
             0xE74C3C,
@@ -164,7 +164,7 @@ async def punish(message: discord.Message, reason: str, severe: bool = False):
     await log(
         message.guild,
         "Overwatch: Action taken",
-        f"**User:** {member} ({member.id})\n**Reason:** {reason}\n"
+        f"**User:** {member.mention} ({member}, {member.id})\n**Reason:** {reason}\n"
         f"**Action:** {action} (strike {n})\n**Channel:** {message.channel.mention}\n"
         f"**Content:** {message.content[:300]}",
     )
@@ -204,7 +204,7 @@ async def on_message(message: discord.Message):
         await log(
             message.guild,
             "Overwatch: Honeypot triggered",
-            f"**User:** {member} ({member.id})\n"
+            f"**User:** {member.mention} ({member}, {member.id})\n"
             f"**Action:** {deleted} message(s) deleted, {action}\n"
             f"**Note:** This is a bot OR a hacked account. "
             f"Please review it and kick/ban manually if it is a bot.",
@@ -234,7 +234,7 @@ async def on_member_join(member: discord.Member):
     if age < timedelta(days=MIN_ACCOUNT_AGE_DAYS):
         await member.timeout(timedelta(hours=1), reason="Very new account")
         await log(member.guild, "Overwatch: New account",
-                  f"{member} ({member.id}) is only {age.days} days old. 1h timeout.")
+                  f"{member.mention} ({member}, {member.id}) is only {age.days} days old. 1h timeout.")
 
     joins = [t for t in recent_joins if now - t <= RAID_WINDOW]
     if len(joins) >= RAID_JOINS:
