@@ -1,8 +1,10 @@
+import json
 import os
 import re
 import time
 from collections import defaultdict, deque
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
 import discord
 from discord.ext import commands, tasks
@@ -122,6 +124,61 @@ def check_spam(message: discord.Message):
     return None
 
 
+# ---------- Honeypot warning card with catch counter ----------
+STATE_FILE = Path(__file__).parent / "honeypot_state.json"
+
+
+def load_state() -> dict:
+    try:
+        return json.loads(STATE_FILE.read_text(encoding="utf-8"))
+    except Exception:
+        return {"count": 0, "message_id": None}
+
+
+def save_state(state: dict):
+    STATE_FILE.write_text(json.dumps(state), encoding="utf-8")
+
+
+honeypot_state = load_state()
+
+
+def honeypot_card():
+    embed = discord.Embed(
+        title="DO NOT SEND MESSAGES IN THIS CHANNEL",
+        description=(
+            "This channel is used to catch spam bots and hacked accounts.\n"
+            "Any message sent here results in a **24h timeout** and the removal "
+            "of your recent messages.\n\n"
+            "If you ended up here by accident: do not write anything. "
+            "If your account was hacked, change your password and enable 2FA."
+        ),
+        color=0xF1C40F,
+    )
+    view = discord.ui.View(timeout=None)
+    view.add_item(
+        discord.ui.Button(
+            label=f"Caught: {honeypot_state['count']}",
+            emoji="\U0001F36F",
+            style=discord.ButtonStyle.secondary,
+            disabled=True,
+        )
+    )
+    return embed, view
+
+
+async def bump_honeypot_counter(guild: discord.Guild):
+    honeypot_state["count"] = honeypot_state.get("count", 0) + 1
+    save_state(honeypot_state)
+    channel = guild.get_channel(HONEYPOT_CHANNEL_ID)
+    message_id = honeypot_state.get("message_id")
+    if channel and message_id:
+        try:
+            embed, view = honeypot_card()
+            await channel.get_partial_message(message_id).edit(embed=embed, view=view)
+        except discord.HTTPException:
+            pass
+
+
 async def punish(message: discord.Message, reason: str, severe: bool = False):
     member = message.author
     try:
@@ -210,6 +267,7 @@ async def on_message(message: discord.Message):
             f"Please review it and kick/ban manually if it is a bot.",
             0xE74C3C,
         )
+        await bump_honeypot_counter(message.guild)
         return
 
     if not is_staff(message.author):
@@ -274,6 +332,31 @@ async def allowdomain(ctx, domain: str):
     """!allowdomain example.com -> whitelist a domain after a false positive."""
     added = blocklist.add_allow(domain)
     await ctx.send(f"`{added}` is now allowed." if added else "Invalid domain.")
+
+
+@bot.command()
+@commands.has_permissions(manage_guild=True)
+async def sethoneypot(ctx):
+    """Posts (or refreshes) the warning card in the honeypot channel."""
+    channel = ctx.guild.get_channel(HONEYPOT_CHANNEL_ID)
+    if channel is None:
+        await ctx.send("Honeypot channel not found. Check HONEYPOT_CHANNEL_ID in your .env file.")
+        return
+    old_id = honeypot_state.get("message_id")
+    if old_id:
+        try:
+            await channel.get_partial_message(old_id).delete()
+        except discord.HTTPException:
+            pass
+    embed, view = honeypot_card()
+    try:
+        msg = await channel.send(embed=embed, view=view)
+    except discord.HTTPException:
+        await ctx.send("I cannot post in the honeypot channel. Check my permissions there.")
+        return
+    honeypot_state["message_id"] = msg.id
+    save_state(honeypot_state)
+    await ctx.send(f"Honeypot warning card posted in {channel.mention}.")
 
 
 @bot.event
